@@ -1,0 +1,215 @@
+/* General Game Board Setup */
+body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #f0f0f0;
+}
+
+.game-board {
+    width: 600px;
+    height: 600px;
+    position: relative;
+    border: 2px solid #333;
+    background-color: green;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Top and Bottom Cards (horizontal rows) */
+.card-row {
+    display: flex;
+    position: absolute;
+}
+
+.top {
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.bottom {
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* Left and Right Cards (vertical columns) */
+.card-column {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+}
+
+.left {
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.right {
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Card Styles */
+.card {
+    width: 50px;
+    height: 80px;
+    background-color: white;
+    border-radius: 5px;
+    border: 1px solid #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.card-column .card {
+    transform: rotate(90deg);  /* Rotate the card 90 degrees */
+    transform-origin: center;
+    margin: -25px;
+}
+
+.card-row .face-down {
+    margin: -10px;
+}
+
+.face-up {
+    background-color: white;
+    margin: 0;
+}
+
+.face-down {
+    background-color: #333;
+}
+
+/* Center Cards - Place the entire container in the center */
+.center-cards {
+    position: absolute;
+    top: 12.5%;
+    left: 12.5%;
+    width: 150px;
+    height: 150px;
+    transform: translate(-50%, -50%);
+    position: relative;
+}
+
+/* Individual card styling */
+.center-cards .card {
+    width: 60px;
+    height: 90px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: white;
+    border: 1px solid #000;
+    font-size: 24px;
+    font-weight: bold;
+    position: absolute;
+}
+
+/* Top card slightly shifted upwards */
+.center-cards .ctop {
+    top: -40px; /* Move upwards */
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* Bottom card slightly shifted downwards */
+.center-cards .cbottom {
+    bottom: -40px; /* Move downwards */
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* Left card slightly shifted to the left */
+.center-cards .cleft {
+    left: -40px; /* Move to the left */
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Right card slightly shifted to the right */
+.center-cards .cright {
+    right: -40px; /* Move to the right */
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.red {
+    color: red;
+}
+
+.black {
+    color: black;
+}
+
+/* Style for the players list section */
+#peerList {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 150px;
+    background-color: #ffffff;
+    border: 2px solid #333;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+#peerList h2 {
+    margin: 0;
+    font-size: 18px;
+    text-align: center;
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+}
+
+#peerList ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 10px 0 0 0;
+}
+
+#peerList ul li {
+    background-color: #f0f0f0;
+    padding: 8px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    text-align: center;
+    font-size: 16px;
+    color: #333;
+    transition: background-color 0.3s ease;
+}
+
+#peerList ul li:hover {
+    background-color: #e0e0e0;
+}
+
+/* Deal button styling */
+#dealButton {
+    position: absolute;
+    left: 10px;
+    padding: 10px 20px;
+    background-color: green;
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+    margin-top: 20px;
+    font-size: 16px;
+}
+
+#dealButton:disabled {
+    background-color: red;
+    cursor: not-allowed;
+}

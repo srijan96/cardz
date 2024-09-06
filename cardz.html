@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4-Player WebRTC Card Game (with Simple-Peer and Rooms)</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="peerList">
+        <h2>Players</h2>
+        <ul id="peers"></ul>
+    </div>
+
+    <button id="dealButton" disabled>Deal Cards</button>
+
+
+    <div class="game-board">
+        <!-- Top Player's Cards (Face Down) -->
+        <div class="card-row top">
+            <!-- <div class="card face-down"></div>
+            <div class="card face-down"></div> -->
+        </div>
+
+        <!-- Left Player's Cards (Face Down) -->
+        <div class="card-column left">
+            <!-- <div class="card face-down"></div>
+            <div class="card face-down"></div> -->
+        </div>
+
+        <!-- Center Cards (One from Each Player) -->
+        <div class="center-cards">
+            <!-- <div class="card face-up ctop">?</div>
+            <div class="card face-up cright">?</div>
+            <div class="card face-up cbottom">?</div>
+            <div class="card face-up cleft">?</div> -->
+        </div>
+
+        <!-- Right Player's Cards (Face Down) -->
+        <div class="card-column right">
+            <!-- <div class="card face-down"></div>
+            <div class="card face-down"></div> -->
+        </div>
+
+        <!-- Bottom Player's Cards (Face Up) -->
+        <div class="card-row bottom">
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9/simplepeer.min.js"></script>
+    <script>
+        const signalingServerURL = 'ws://localhost:8080';  // WebSocket signaling server URL
+        const signalingSocket = new WebSocket(signalingServerURL);
+
+        const peers = {};  // Store peer connections
+        let localPlayerId = prompt("Please enter your Player ID:");
+        let roomId = prompt("Please enter Room ID:");
+
+        let playerOrder = [];
+        let hand = [];
+        const dealButton = document.getElementById('dealButton');
+
+        let deck = generateDeck();
+        console.log(deck);
+        deck = shuffleList(deck);
+        console.log(deck);
+
+        if (!localPlayerId || !roomId) {
+            alert("A valid Player ID and Room ID are required to join the game.");
+            throw new Error("No Player ID or Room ID provided");
+        }
+
+        // Connect to the signaling server
+        signalingSocket.onopen = () => {
+            console.log('Connected to the signaling server');
+            signalingSocket.send(JSON.stringify({
+                type: 'join',
+                from: localPlayerId,
+                room: roomId  // Include room information in the join message
+            }));
+            console.log(`Player ${localPlayerId} joined room ${roomId}`);
+        };
+
+        // Handle incoming signaling messages
+        signalingSocket.onmessage = (message) => {
+            console.log(message.data);
+            const data = JSON.parse(message.data);
+
+            // Handle room full error
+            if (data.type === 'error' && data.message === 'Room is full') {
+                alert(`Error: ${data.message}`);
+                console.log(`Error: ${data.message}`);
+                return;  // Stop further processing if the room is full
+            }
+
+            handleSignalingData(data);
+        };
+
+        // Handle signaling data from the server
+        function handleSignalingData(data) {
+            const { type, from, to, signal, room } = data;
+
+            // Ignore messages from different rooms
+            if (room !== roomId) return;
+
+            if (type === 'join') {
+                if (from !== localPlayerId) {
+                    // Automatically connect to a new peer when they join
+                    connectToNewPeer(from, true);
+                }
+            } else if (type === 'signal' && to === localPlayerId) {
+                // Apply the signaling data (offer/answer/ICE) from other peers
+                if (!peers[from]) {
+                    connectToNewPeer(from, false);  // If peer connection doesn't exist, create one
+                }
+                peers[from].signal(signal);  // Apply the signaling data
+            }
+            updateVisuals();
+        }
+
+        // Create a new peer connection
+        function connectToNewPeer(peerId, initiator = true) {
+            console.log(`Connecting to new peer: ${peerId}`);
+
+            const peer = new SimplePeer({ initiator, trickle: true });
+
+            peer.on('signal', signalData => {
+                console.log(`Sending signaling data to ${peerId}:`, signalData);
+                signalingSocket.send(JSON.stringify({
+                    type: 'signal',
+                    from: localPlayerId,
+                    to: peerId,
+                    room: roomId,  // Include room information in the signal message
+                    signal: signalData
+                }));
+            });
+
+            peer.on('connect', () => {
+                console.log(`Connected to ${peerId}`);
+                updatePeerList();
+                peer.send(`Hello from Player ${localPlayerId}`);
+            });
+
+            peer.on('data', data => {
+                console.log(`Received data from ${peerId}: ${data}`);
+                processIncomingData(peerId, data);
+            });
+
+            peer.on('error', err => {
+                console.error(`Error with peer ${peerId}:`, err);
+            });
+
+            peers[peerId] = peer;  // Store the peer
+        }
+
+        function processIncomingData(peerId, data) {
+            const dataObject = JSON.parse(data);
+            console.log(dataObject);
+            if(dataObject.type === "playerOrder") {
+                playerOrder = dataObject.data;
+                updateVisuals();
+            } else if(dataObject.type === "deal") {
+                hand = [...hand, ...dataObject.data];
+                updateVisuals();
+            }
+        }
+
+        function updateVisuals() {
+            updatePeerList();
+            updateCards();
+        }
+
+        // Update the peer list UI
+        function updatePeerList() {
+            console.log(`Updating playerOrder with ${playerOrder}`)
+            // Check if playerOrder is empty (by checking length)
+            playerList = playerOrder.length === 0 
+                ? [...Object.keys(peers), localPlayerId]  // Concatenate array and localPlayerId
+                : playerOrder;
+
+            const playersListDiv = document.getElementById('peers');
+            playersListDiv.innerHTML = '';  // Clear the existing list
+
+            const roomListItem = document.createElement('li');
+            roomListItem.textContent = `RoomId : ${roomId}`;
+            playersListDiv.appendChild(roomListItem);
+
+            playerList.forEach(peerId => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `Player ${peerId} ${peerId === localPlayerId ? "[*]" : ""}`;
+                playersListDiv.appendChild(listItem);
+            });
+
+            // Enable the deal button if there are 4 players connected (including yourself)
+            if (playerList.length === 4) { // +1 to account for the local player
+                dealButton.disabled = false;
+            } else {
+                dealButton.disabled = true;
+            }
+        }
+
+        function updateCards() {
+            // Self cards
+            const bottomRow = document.querySelector('.card-row.bottom');
+
+            bottomRow.innerHTML = ''; // Clear previous cards
+
+            for (const card of hand) {
+                const cardElement = document.createElement('div');
+                cardElement.classList.add('card', 'face-up');
+                
+                const suit = card.slice(-1);
+                const color = (suit === '♠' || suit === '♣') ? 'black' : 'red';
+                
+                cardElement.innerHTML = `<div class="card face-up ${color}">${card}</div>`;
+                bottomRow.appendChild(cardElement);
+            }
+
+            // Other Player's Cards
+            numCards = hand.length;
+            const others = ['.card-column.left', '.card-row.top', '.card-column.right'];
+            others.forEach(selector => {
+                const div = document.querySelector(selector);
+                div.innerHTML = ''; 
+
+                for (let i = 0; i < numCards; i++) {
+                    const cardElement = document.createElement('div');
+                    cardElement.classList.add('card', 'face-down');
+                
+                    // cardElement.innerHTML = `<div class="card face-down"></div>`;
+                    div.appendChild(cardElement);
+                }
+            });
+        }
+
+        // Function to sleep for a specified duration (in milliseconds)
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function generateDeck() {
+            const suits = ['♠', '♣', '♥', '♦'];  // Spades, Clubs, Hearts, Diamonds
+            const ranks = ['7', '8', '9', '10', 'J', 'Q', 'K', 'A'];  // Ranks 7 to Ace
+
+            let deck = [];
+
+            for (const suit of suits) {
+                for (const rank of ranks) {
+                    deck.push(`${rank}${suit}`);  // Combine rank and suit
+                }
+            }
+
+            return deck;  // Returns an array of 32 cards
+        }
+
+        function shuffleList(list) {
+            for (let i = list.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [list[i], list[j]] = [list[j], list[i]];  // Swap cards
+            }
+            return list;
+        }
+
+        function unicast(peerId, data) {
+            peer = peers[peerId];
+            // Check if the peer is connected before sending data
+            if (peer.connected) {
+                    try {
+                        peer.send(JSON.stringify(data));  // Send the data to the peer
+                        console.log(`Data sent to peer ${peerId}`);
+                    } catch (err) {
+                        console.error(`Failed to send data to peer ${peerId}:`, err);
+                    }
+                } else {
+                    console.warn(`Peer ${peerId} is not connected.`);
+                }
+        }
+
+        function selfCast(data) {
+            try {
+                processIncomingData(localPlayerId, JSON.stringify(data));  // Handle local data as if it were received
+                console.log(`Data broadcasted to self`);
+            } catch (err) {
+                console.error(`Failed to handle data for self:`, err);
+            }
+        }
+
+        function broadcastToPeers(data) {
+            // Iterate over each peer in the peers object
+            Object.keys(peers).forEach(peerId => {
+                unicast(peerId, data);
+                
+            });
+
+            // Broadcast to self (handle locally)
+            selfCast(data);
+        }
+
+        function setPlayerOrder() {
+            playerOrder = [...Object.keys(peers), localPlayerId]
+            console.log(playerOrder);
+            playerOrder = shuffleList(playerOrder);
+            console.log(playerOrder);
+
+            broadcastToPeers({
+                type: "playerOrder",
+                data: playerOrder
+            });
+        }
+
+
+        // Function to "deal" the cards into the empty board when the deal button is clicked
+        dealButton.addEventListener('click', async () => {
+            const offset = hand.length*4;
+            // Deal 1
+            if(offset === 0) {
+                console.log('Setting Player Order...');
+                setPlayerOrder();
+            } else { // Deal 2
+                dealButton.disabled == true;
+            }
+            console.log('Dealing cards...');
+
+            workingDeck = deck.slice(offset);
+
+            for (let i = 0; i < 4; i++) {
+                cards = workingDeck.slice(i*4,i*4+4);
+                targetPlayer = playerOrder[i];
+                if(targetPlayer === localPlayerId) {
+                    selfCast({
+                            type: "deal",
+                            data: cards
+                        }
+                    );
+                } else {
+                    unicast(targetPlayer, {
+                            type: "deal",
+                            data: cards
+                        }
+                    );
+                }
+                
+            }
+        });
+    </script>
+</body>
+</html>
