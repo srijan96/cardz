@@ -58,12 +58,18 @@
 
         let playerOrder = [];
         let hand = [];
+
         const dealButton = document.getElementById('dealButton');
 
         let deck = generateDeck();
-        console.log(deck);
         deck = shuffleList(deck);
-        console.log(deck);
+
+        savedState = loadStateFromLocalStorage()
+        if(savedState) {
+            deck = savedState.deck
+            hand = savedState.hand
+            playerOrder = savedState.playerOrder
+        }
 
         if (!localPlayerId || !roomId) {
             alert("A valid Player ID and Room ID are required to join the game.");
@@ -168,6 +174,8 @@
         function updateVisuals() {
             updatePeerList();
             updateCards();
+
+            saveStateToLocalStorage();
         }
 
         // Update the peer list UI
@@ -317,7 +325,7 @@
                 console.log('Setting Player Order...');
                 setPlayerOrder();
             } else { // Deal 2
-                dealButton.disabled == true;
+                dealButton.disabled = true;
             }
             console.log('Dealing cards...');
 
@@ -342,6 +350,39 @@
                 
             }
         });
+
+        // Function to save player state to localStorage
+        function saveStateToLocalStorage() {
+            const compositeKey = `${localPlayerId}_${roomId}`;
+            const gameState = {
+                playerOrder: playerOrder,
+                hand: hand,
+                deck: deck
+            };
+
+            // Save the state as a JSON string in localStorage
+            localStorage.setItem(compositeKey, JSON.stringify(gameState));
+            console.log(`Game state saved for ${compositeKey}`);
+        }
+
+        // Function to load player state from localStorage
+        function loadStateFromLocalStorage() {
+            const compositeKey = `${localPlayerId}_${roomId}`;
+            const savedState = localStorage.getItem(compositeKey);
+
+            if (savedState) {
+                const gameState = JSON.parse(savedState);
+                console.log(`Game state loaded for ${compositeKey}`, gameState);
+
+                // You can now use gameState.playerOrder, gameState.hand, and gameState.deck
+                return gameState;
+            } else {
+                console.log(`No saved game state found for ${compositeKey}`);
+                return null; // No saved state found
+            }
+        }
+
+
     </script>
 </body>
 </html>
