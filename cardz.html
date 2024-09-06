@@ -17,30 +17,16 @@
 
     <div class="game-board">
         <!-- Top Player's Cards (Face Down) -->
-        <div class="card-row top">
-            <!-- <div class="card face-down"></div>
-            <div class="card face-down"></div> -->
-        </div>
+        <div class="card-row top"></div>
 
         <!-- Left Player's Cards (Face Down) -->
-        <div class="card-column left">
-            <!-- <div class="card face-down"></div>
-            <div class="card face-down"></div> -->
-        </div>
+        <div class="card-column left"></div>
 
         <!-- Center Cards (One from Each Player) -->
-        <div class="center-cards">
-            <!-- <div class="card face-up ctop">?</div>
-            <div class="card face-up cright">?</div>
-            <div class="card face-up cbottom">?</div>
-            <div class="card face-up cleft">?</div> -->
-        </div>
+        <div class="center-cards"></div>
 
         <!-- Right Player's Cards (Face Down) -->
-        <div class="card-column right">
-            <!-- <div class="card face-down"></div>
-            <div class="card face-down"></div> -->
-        </div>
+        <div class="card-column right"></div>
 
         <!-- Bottom Player's Cards (Face Up) -->
         <div class="card-row bottom">
@@ -52,14 +38,16 @@
         const signalingServerURL = 'ws://localhost:8080';  // WebSocket signaling server URL
         const signalingSocket = new WebSocket(signalingServerURL);
 
+        const dealButton = document.getElementById('dealButton');
         const peers = {};  // Store peer connections
         let localPlayerId = prompt("Please enter your Player ID:");
         let roomId = prompt("Please enter Room ID:");
 
         let playerOrder = [];
         let hand = [];
-
-        const dealButton = document.getElementById('dealButton');
+        let currentTurn = {
+            playerId: null, action: null
+        };
 
         let deck = generateDeck();
         deck = shuffleList(deck);
@@ -69,6 +57,7 @@
             deck = savedState.deck
             hand = savedState.hand
             playerOrder = savedState.playerOrder
+            currentTurn = savedState.currentTurn
         }
 
         if (!localPlayerId || !roomId) {
@@ -164,11 +153,12 @@
             console.log(dataObject);
             if(dataObject.type === "playerOrder") {
                 playerOrder = dataObject.data;
-                updateVisuals();
             } else if(dataObject.type === "deal") {
                 hand = [...hand, ...dataObject.data];
-                updateVisuals();
+            } else if(dataObject.type === "turn") {
+                currentTurn = dataObject.data;
             }
+            updateVisuals();
         }
 
         function updateVisuals() {
@@ -195,7 +185,9 @@
 
             playerList.forEach(peerId => {
                 const listItem = document.createElement('li');
-                listItem.textContent = `Player ${peerId} ${peerId === localPlayerId ? "[*]" : ""}`;
+                const localPlayerMarker = peerId === localPlayerId ? "[*]" : "";
+                const turnMarker = peerId === currentTurn.playerId ? currentTurn.action : "";
+                listItem.textContent = `Player ${peerId} ${localPlayerMarker} ${turnMarker}`;
                 playersListDiv.appendChild(listItem);
             });
 
@@ -241,10 +233,7 @@
             });
         }
 
-        // Function to sleep for a specified duration (in milliseconds)
-        function sleep(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
+
 
         function generateDeck() {
             const suits = ['♠', '♣', '♥', '♦'];  // Spades, Clubs, Hearts, Diamonds
@@ -314,6 +303,27 @@
                 type: "playerOrder",
                 data: playerOrder
             });
+            broadcastToPeers({
+                type: "turn",
+                data: {
+                    playerId : playerOrder[0],
+                    action: "deal"
+                }
+            });
+        }
+
+        function moveToNextTurn(nextAction) {
+            const currentIndex = playerOrder.indexOf(currentTurn.playerId);
+            const nextIndex = (currentIndex + 1) % playerOrder.length;
+            nextTurnPlayerId = playerOrder[nextIndex];
+
+            broadcastToPeers({
+                type: "turn",
+                data: {
+                    playerId: nextTurnPlayerId,
+                    action: nextAction
+                }
+            });
         }
 
 
@@ -349,6 +359,7 @@
                 }
                 
             }
+            moveToNextTurn("bid");
         });
 
         // Function to save player state to localStorage
@@ -357,7 +368,8 @@
             const gameState = {
                 playerOrder: playerOrder,
                 hand: hand,
-                deck: deck
+                deck: deck,
+                currentTurn: currentTurn
             };
 
             // Save the state as a JSON string in localStorage
@@ -374,7 +386,6 @@
                 const gameState = JSON.parse(savedState);
                 console.log(`Game state loaded for ${compositeKey}`, gameState);
 
-                // You can now use gameState.playerOrder, gameState.hand, and gameState.deck
                 return gameState;
             } else {
                 console.log(`No saved game state found for ${compositeKey}`);
