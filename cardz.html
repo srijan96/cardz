@@ -37,6 +37,7 @@
     <script>
         const signalingServerURL = 'ws://localhost:8080';  // WebSocket signaling server URL
         const signalingSocket = new WebSocket(signalingServerURL);
+        const PASS = 0;
 
         const dealButton = document.getElementById('dealButton');
         const peers = {};  // Store peer connections
@@ -48,6 +49,9 @@
         let currentTurn = {
             playerId: null, action: null
         };
+        currentBid = {
+            playerId: null, amount: null, phase: 1, opponent: null
+        }
 
         let deck = generateDeck();
         deck = shuffleList(deck);
@@ -58,6 +62,7 @@
             hand = savedState.hand
             playerOrder = savedState.playerOrder
             currentTurn = savedState.currentTurn
+            currentBid = savedState.currentBid
         }
 
         if (!localPlayerId || !roomId) {
@@ -157,6 +162,15 @@
                 hand = [...hand, ...dataObject.data];
             } else if(dataObject.type === "turn") {
                 currentTurn = dataObject.data;
+            } else if(dataObject.type === "bid") {
+                currentBid = {
+                    playerId: peerId,
+                    amount: dataObject.data.amount,
+                    phase: currentBid.phase,
+                    opponent: dataObject.data.opponent
+                }
+            } else if(dataObject.type === "bid-shift") {
+                currentBid.phase = currentBid.phase + 1
             }
             updateVisuals();
         }
@@ -236,20 +250,30 @@
 
 
         function updateBid(){
-            if(currentTurn.action != "bid" || currentTurn.playerId != localPlayerId) {
-                return;
-            }
             const center = document.querySelector('.center-cards');
             center.innerHTML = '';
 
+            if(currentTurn.action != "bid" || currentTurn.playerId != localPlayerId) {
+                return;
+            }
+
+
+            const nextBidAmount = currentBid.amount? currentBid.amount + 1 : 16; // TODO : Match etc
+
             const cardElement1 = document.createElement('div');
             cardElement1.classList.add('card', 'cleft', 'face-up');
-            cardElement1.innerHTML = `16`;
+            cardElement1.innerHTML = nextBidAmount;
+            cardElement1.addEventListener('click', function() {
+                placeBid(nextBidAmount);
+            });
             center.appendChild(cardElement1);
 
             const cardElement2 = document.createElement('div');
             cardElement2.classList.add('card', 'cright', 'face-up');
             cardElement2.innerHTML = `pass`;
+            cardElement2.addEventListener('click', function() {
+                placeBid(PASS);
+            });
             center.appendChild(cardElement2);
         }
 
@@ -331,10 +355,12 @@
             });
         }
 
-        function moveToNextTurn(nextAction) {
+        function moveToNextTurn(nextAction, delta = 1) {
             const currentIndex = playerOrder.indexOf(currentTurn.playerId);
-            const nextIndex = (currentIndex + 1) % playerOrder.length;
+            const nextIndex = (currentIndex + delta + 4) % playerOrder.length;
             nextTurnPlayerId = playerOrder[nextIndex];
+
+            console.log(nextTurnPlayerId);
 
             broadcastToPeers({
                 type: "turn",
@@ -383,7 +409,12 @@
                 }
                 
             }
-            moveToNextTurn("bid");
+            if(offset === 0) {
+                moveToNextTurn("bid", 0);
+            } else {
+                moveToNextTurn("play");
+            }
+            
         });
 
         // Function to save player state to localStorage
@@ -393,7 +424,8 @@
                 playerOrder: playerOrder,
                 hand: hand,
                 deck: deck,
-                currentTurn: currentTurn
+                currentTurn: currentTurn,
+                currentBid: currentBid
             };
 
             // Save the state as a JSON string in localStorage
@@ -415,6 +447,46 @@
                 console.log(`No saved game state found for ${compositeKey}`);
                 return null; // No saved state found
             }
+        }
+
+        function placeBid(bidAmount){
+            console.log(bidAmount);
+            if(currentTurn.action != "bid" || currentTurn.playerId != localPlayerId) {
+                alert(`Can't bid now. Current turn is : ${currentTurn.playerId} , ${currentTurn.action}`);
+                return;
+            }
+            if(bidAmount === PASS) {
+                if(currentBid.phase === 3) {
+                    if(currentBid.amount) {
+                        moveToNextTurn("deal", 0); // Last one to bid, deals as well
+                    } else {
+                        moveToNextTurn("end", 0);
+                    }
+                } else {
+                    broadcastToPeers({
+                        type: "bid-shift",
+                        data: {}
+                    });
+                    const currentIndex = playerOrder.indexOf(localPlayerId);
+                    nextIndex = currentBid.amount? currentBid.phase : currentIndex + 1; // Else case for initial PASS
+                    moveToNextTurn("bid", nextIndex - currentIndex);
+                }
+            } else {
+                phase = currentBid.phase
+                currentBidders = currentBid.playerId? [currentBid.playerId, currentBid.opponent] : [playerOrder[phase - 1],playerOrder[phase]]
+                opponentId = currentBidders[0] === localPlayerId ? currentBidders[1] : currentBidders[0]
+                broadcastToPeers({
+                    type: "bid",
+                    data: {
+                        amount: bidAmount,
+                        opponent: opponentId
+                    }
+                });
+                const currentIndex = playerOrder.indexOf(localPlayerId);
+                const opponentIndex = playerOrder.indexOf(opponentId);
+                moveToNextTurn("bid", opponentIndex - currentIndex);
+            }
+            updateBid();
         }
 
 
