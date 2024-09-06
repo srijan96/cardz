@@ -164,6 +164,7 @@
         function updateVisuals() {
             updatePeerList();
             updateCards();
+            updateBid();
 
             saveStateToLocalStorage();
         }
@@ -233,6 +234,24 @@
             });
         }
 
+
+        function updateBid(){
+            if(currentTurn.action != "bid" || currentTurn.playerId != localPlayerId) {
+                return;
+            }
+            const center = document.querySelector('.center-cards');
+            center.innerHTML = '';
+
+            const cardElement1 = document.createElement('div');
+            cardElement1.classList.add('card', 'cleft', 'face-up');
+            cardElement1.innerHTML = `16`;
+            center.appendChild(cardElement1);
+
+            const cardElement2 = document.createElement('div');
+            cardElement2.classList.add('card', 'cright', 'face-up');
+            cardElement2.innerHTML = `pass`;
+            center.appendChild(cardElement2);
+        }
 
 
         function generateDeck() {
@@ -336,6 +355,11 @@
                 setPlayerOrder();
             } else { // Deal 2
                 dealButton.disabled = true;
+            }
+
+            if(currentTurn.action != "deal") {
+                alert(`Can't DEAL now. Current turn is : ${currentTurn.playerId} , ${currentTurn.action}`);
+                return;
             }
             console.log('Dealing cards...');
 
