@@ -52,6 +52,10 @@
         currentBid = {
             playerId: null, amount: null, phase: 1, opponent: null
         }
+        let currentTrump = {
+            trump: null,
+            open: false
+        }
 
         let deck = generateDeck();
         deck = shuffleList(deck);
@@ -63,6 +67,7 @@
             playerOrder = savedState.playerOrder
             currentTurn = savedState.currentTurn
             currentBid = savedState.currentBid
+            currentTrump = savedState.currentTrump
         }
 
         if (!localPlayerId || !roomId) {
@@ -171,6 +176,8 @@
                 }
             } else if(dataObject.type === "bid-shift") {
                 currentBid.phase = currentBid.phase + 1
+            } else if(dataObject.type === "trump") {
+                currentTrump = dataObject.data
             }
             updateVisuals();
         }
@@ -179,6 +186,7 @@
             updatePeerList();
             updateCards();
             updateBid();
+            updateTrumpSelector();
 
             saveStateToLocalStorage();
         }
@@ -195,7 +203,9 @@
             playersListDiv.innerHTML = '';  // Clear the existing list
 
             const roomListItem = document.createElement('li');
-            roomListItem.textContent = `RoomId : ${roomId}`;
+            const bidText = currentBid.amount ? currentBid.amount : "";
+            const trumpText = currentTrump.open ? currentTrump.trump : "";
+            roomListItem.textContent = `Room ${roomId} ${bidText} ${trumpText}`;
             playersListDiv.appendChild(roomListItem);
 
             playerList.forEach(peerId => {
@@ -257,7 +267,6 @@
                 return;
             }
 
-
             const nextBidAmount = currentBid.amount? currentBid.amount + 1 : 16; // TODO : Match etc
 
             const cardElement1 = document.createElement('div');
@@ -275,6 +284,31 @@
                 placeBid(PASS);
             });
             center.appendChild(cardElement2);
+        }
+
+        function updateTrumpSelector(){
+            const center = document.querySelector('.center-cards');
+
+            if(currentTurn.action != "set-trump" || currentTurn.playerId != localPlayerId) {
+                return;
+            }
+
+            center.innerHTML = '';
+
+            const suits = ['♠', '♣', '♥', '♦'];
+            const classes = ['cleft', 'ctop', 'cright', 'cbottom'];
+
+            for (let i = 0; i < 4; i++) {
+                const suit = suits[i];
+                const color = (suit === '♠' || suit === '♣') ? 'black' : 'red';
+                const cardElement1 = document.createElement('div');
+                cardElement1.classList.add('card', classes[i], 'face-up', color);
+                cardElement1.innerHTML = suit;
+                cardElement1.addEventListener('click', function() {
+                    setTrump(suit);
+                });
+                center.appendChild(cardElement1);
+            }
         }
 
 
@@ -412,7 +446,13 @@
             if(offset === 0) {
                 moveToNextTurn("bid", 0);
             } else {
-                moveToNextTurn("play");
+                broadcastToPeers({
+                    type: "turn",
+                    data: {
+                        playerId: playerOrder[0],
+                        action: "play"
+                    }
+                });
             }
             
         });
@@ -425,7 +465,8 @@
                 hand: hand,
                 deck: deck,
                 currentTurn: currentTurn,
-                currentBid: currentBid
+                currentBid: currentBid,
+                currentTrump: currentTrump
             };
 
             // Save the state as a JSON string in localStorage
@@ -458,7 +499,13 @@
             if(bidAmount === PASS) {
                 if(currentBid.phase === 3) {
                     if(currentBid.amount) {
-                        moveToNextTurn("deal", 0); // Last one to bid, deals as well
+                        broadcastToPeers({
+                            type: "turn",
+                            data: {
+                                playerId: currentBid.playerId,
+                                action: "set-trump"
+                            }
+                        });
                     } else {
                         moveToNextTurn("end", 0);
                     }
@@ -487,6 +534,34 @@
                 moveToNextTurn("bid", opponentIndex - currentIndex);
             }
             updateBid();
+        }
+
+        function setTrump(trump) {
+            console.log("setting trump" + trump);
+            broadcastToPeers({
+                type: "trump",
+                data: {
+                    trump: trump,
+                    open: false
+                }
+            });
+            broadcastToPeers({
+                type: "turn",
+                data: {
+                    playerId: playerOrder[3],
+                    action: "deal"
+                }
+            });
+        }
+
+        function openTrump(trump) {
+            broadcastToPeers({
+                type: "trump",
+                data: {
+                    trump: trump,
+                    open: true
+                }
+            });
         }
 
 
