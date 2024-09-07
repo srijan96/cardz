@@ -196,7 +196,7 @@ body {
 }
 
 /* Deal button styling */
-#dealButton {
+#startButton {
     position: absolute;
     left: 10px;
     padding: 10px 20px;
@@ -209,7 +209,7 @@ body {
     font-size: 16px;
 }
 
-#dealButton:disabled {
+#startButton:disabled {
     background-color: red;
     cursor: not-allowed;
 }

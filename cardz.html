@@ -12,7 +12,7 @@
         <ul id="peers"></ul>
     </div>
 
-    <button id="dealButton" disabled>Deal Cards</button>
+    <button id="startButton" disabled>Start Game</button>
 
 
     <div class="game-board">
@@ -39,7 +39,7 @@
         const signalingSocket = new WebSocket(signalingServerURL);
         const PASS = 0;
 
-        const dealButton = document.getElementById('dealButton');
+        const startButton = document.getElementById('startButton');
         const peers = {};  // Store peer connections
         let localPlayerId = prompt("Please enter your Player ID:");
         let roomId = prompt("Please enter Room ID:");
@@ -49,7 +49,7 @@
         let currentTurn = {
             playerId: null, action: null
         };
-        currentBid = {
+        let currentBid = {
             playerId: null, amount: null, phase: 1, opponent: null
         }
         let currentTrump = {
@@ -60,9 +60,9 @@
             round: 0,
             cards: []
         }
+        let localScore = 0;
 
         let deck = generateDeck();
-        deck = shuffleList(deck);
 
         savedState = loadStateFromLocalStorage()
         if(savedState) {
@@ -73,6 +73,7 @@
             currentBid = savedState.currentBid
             currentTrump = savedState.currentTrump
             currentRound = savedState.currentRound
+            localScore = savedState.localScore
         }
 
         if (!localPlayerId || !roomId) {
@@ -168,6 +169,9 @@
             console.log(dataObject);
             if(dataObject.type === "playerOrder") {
                 playerOrder = dataObject.data;
+                startButton.style.display = 'none'; // Remove start button once game starts
+            } else if(dataObject.type === "do-deal") {
+                dealCards();
             } else if(dataObject.type === "deal") {
                 hand = [...hand, ...dataObject.data];
             } else if(dataObject.type === "turn") {
@@ -189,11 +193,69 @@
                         { [peerId] : dataObject.data }
                     ];
                 currentRound = {
-                    round: newCards.length === 4 ? currentRound.round + 1 : currentRound.round,
+                    round: currentRound.round,
                     cards: newCards
+                }
+            } else if(dataObject.type === "round-end") {
+                currentRound = {
+                    round: currentRound.round + 1,
+                    cards: []
+                }
+                score = dataObject.data;
+                if(score.winner === localPlayerId) {
+                    localScore = localScore + score.totalPoints;
+                }
+                if(currentRound.round === 8) {
+                    startButton.style.display = 'inline-block';
+                    startButton.textContent = 'Start new Game';                    
                 }
             }
             updateVisuals();
+        }
+
+        // Init Match
+        startButton.addEventListener('click', async () => {
+            if(currentRound.round === 0) {
+                console.log('Fresh game, Setting Player Order...');
+                setPlayerOrder();
+            }
+
+            reserStates();
+
+            broadcastToPeers({
+                type: "turn",
+                data: {
+                    playerId: playerOrder[3],
+                    action: "do-deal"
+                }
+            });
+
+            broadcastToPeers({
+                type: "do-deal",
+                data: {
+                }
+            });
+        });
+
+        function reserStates() {
+            deck = shuffleList(deck);
+            hand = [];
+            playerOrder = playerOrder; // Keep same
+            currentTurn = {
+                playerId: null, action: null
+            }
+            currentBid = {
+                playerId: null, amount: null, phase: 1, opponent: null
+            }
+            currentTrump = {
+                trump: null,
+                open: false
+            }
+            currentRound = {
+                round: 0,
+                cards: []
+            }
+            localScore = 0;
         }
 
         function updateVisuals() {
@@ -222,22 +284,23 @@
 
             playerList.forEach(peerId => {
                 const listItem = document.createElement('li');
-                const localPlayerMarker = peerId === localPlayerId ? "[*]" : "";
+                const localPlayerMarker = peerId === localPlayerId ? "*" : "";
                 const turnMarker = peerId === currentTurn.playerId ? currentTurn.action : "";
-
+                const scoreMarker = peerId === localPlayerId ? `(${localScore})` : "";
+                
                 const bidText = currentBid.amount ? currentBid.amount : "";
                 const trumpText = currentTrump.open ? currentTrump.trump : "";
 
                 const bidMarker = currentBid.playerId === peerId ? `${bidText} ${trumpText}` : "";
-                listItem.textContent = `${peerId} ${localPlayerMarker} ${turnMarker} ${bidMarker}`;
+                listItem.textContent = `${peerId} ${localPlayerMarker} ${turnMarker} ${bidMarker} ${scoreMarker}`;
                 playersListDiv.appendChild(listItem);
             });
 
-            // Enable the deal button if there are 4 players connected (including yourself)
-            if (playerList.length === 4) { // +1 to account for the local player
-                dealButton.disabled = false;
+            // Enable the start button if there are 4 players connected
+            if (playerList.length === 4) {
+                startButton.disabled = false;
             } else {
-                dealButton.disabled = true;
+                startButton.disabled = true;
             }
         }
 
@@ -448,13 +511,6 @@
                 type: "playerOrder",
                 data: playerOrder
             });
-            broadcastToPeers({
-                type: "turn",
-                data: {
-                    playerId : playerOrder[0],
-                    action: "deal"
-                }
-            });
         }
 
         function moveToNextTurn(nextAction, delta = 1) {
@@ -473,22 +529,16 @@
             });
         }
 
-
-        // Function to "deal" the cards into the empty board when the deal button is clicked
-        dealButton.addEventListener('click', async () => {
+        function dealCards() {
             const offset = hand.length*4;
             // Deal 1
             if(offset === 0) {
-                console.log('Setting Player Order...');
-                setPlayerOrder();
-                // TODO : Move this to init stage, and let only the 4th player deal.
-                // DEal has to come from same deck, to maintain consistency
             } else { // Deal 2
-                dealButton.disabled = true;
+                startButton.disabled = true;
             }
 
-            if(currentTurn.action != "deal") {
-                alert(`Can't DEAL now. Current turn is : ${currentTurn.playerId} , ${currentTurn.action}`);
+            if(currentTurn.action != "do-deal" || currentTurn.playerId !== localPlayerId) {
+                // alert(`Can't DEAL now. Current turn is : ${currentTurn.playerId} , ${currentTurn.action}`);
                 return;
             }
             console.log('Dealing cards...');
@@ -514,7 +564,7 @@
                 
             }
             if(offset === 0) {
-                moveToNextTurn("bid", 0);
+                moveToNextTurn("bid");
             } else {
                 broadcastToPeers({
                     type: "turn",
@@ -524,8 +574,7 @@
                     }
                 });
             }
-            
-        });
+        }
 
         // Function to save player state to localStorage
         function saveStateToLocalStorage() {
@@ -537,7 +586,8 @@
                 currentTurn: currentTurn,
                 currentBid: currentBid,
                 currentTrump: currentTrump,
-                currentRound: currentRound
+                currentRound: currentRound,
+                localScore: localScore
             };
 
             // Save the state as a JSON string in localStorage
@@ -620,8 +670,22 @@
                 type: "turn",
                 data: {
                     playerId: playerOrder[3],
-                    action: "deal"
+                    action: "do-deal"
                 }
+            });
+            broadcastToPeers({
+                type: "do-deal",
+                data: {
+                }
+            });
+        }
+
+        function postRoundResults() {
+            result = calculateRoundResults(currentRound.cards);
+            console.log(result);
+            broadcastToPeers({
+                type: "round-end",
+                data: result
             });
         }
 
@@ -640,10 +704,8 @@
             });
 
             if(currentRound.cards.length === 4) {
+                postRoundResults();
                 // Calculate score and next player
-                result = calculateRoundResults(currentRound.cards);
-                console.log(result);
-                // Broadcast points and reset center
                 broadcastToPeers({
                     type: "turn",
                     data: {
