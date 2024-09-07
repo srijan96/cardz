@@ -56,6 +56,10 @@
             trump: null,
             open: false
         }
+        let currentRound = {
+            round: 0,
+            cards: []
+        }
 
         let deck = generateDeck();
         deck = shuffleList(deck);
@@ -68,6 +72,7 @@
             currentTurn = savedState.currentTurn
             currentBid = savedState.currentBid
             currentTrump = savedState.currentTrump
+            currentRound = savedState.currentRound
         }
 
         if (!localPlayerId || !roomId) {
@@ -178,6 +183,15 @@
                 currentBid.phase = currentBid.phase + 1
             } else if(dataObject.type === "trump") {
                 currentTrump = dataObject.data
+            } else if(dataObject.type === "play") {
+                newCards = [
+                        ...currentRound.cards,
+                        { [peerId] : dataObject.data }
+                    ];
+                currentRound = {
+                    round: newCards.length === 4 ? currentRound.round + 1 : currentRound.round,
+                    cards: newCards
+                }
             }
             updateVisuals();
         }
@@ -203,16 +217,19 @@
             playersListDiv.innerHTML = '';  // Clear the existing list
 
             const roomListItem = document.createElement('li');
-            const bidText = currentBid.amount ? currentBid.amount : "";
-            const trumpText = currentTrump.open ? currentTrump.trump : "";
-            roomListItem.textContent = `Room ${roomId} ${bidText} ${trumpText}`;
+            roomListItem.textContent = `Room ${roomId}`;
             playersListDiv.appendChild(roomListItem);
 
             playerList.forEach(peerId => {
                 const listItem = document.createElement('li');
                 const localPlayerMarker = peerId === localPlayerId ? "[*]" : "";
                 const turnMarker = peerId === currentTurn.playerId ? currentTurn.action : "";
-                listItem.textContent = `Player ${peerId} ${localPlayerMarker} ${turnMarker}`;
+
+                const bidText = currentBid.amount ? currentBid.amount : "";
+                const trumpText = currentTrump.open ? currentTrump.trump : "";
+
+                const bidMarker = currentBid.playerId === peerId ? `${bidText} ${trumpText}` : "";
+                listItem.textContent = `${peerId} ${localPlayerMarker} ${turnMarker} ${bidMarker}`;
                 playersListDiv.appendChild(listItem);
             });
 
@@ -224,11 +241,33 @@
             }
         }
 
+        function alignArrays() {
+            const positions = ['cleft', 'ctop', 'cright', 'cbottom'];
+
+            const playerIndex = playerOrder.indexOf(localPlayerId);
+            const cbottomIndex = positions.indexOf('cbottom');
+
+            const rotation = (cbottomIndex - playerIndex + playerOrder.length) % playerOrder.length;
+
+            const rotatedPositions = positions.slice(rotation).concat(positions.slice(0, rotation));
+
+            const playerPositionMap = {};
+            for (let i = 0; i < 4; i++) {
+                playerPositionMap[playerOrder[i]] = rotatedPositions[i];
+            }
+
+            console.log(playerIndex, cbottomIndex, rotation, rotatedPositions);
+
+            return playerPositionMap;
+        }
+        
         function updateCards() {
             // Self cards
             const bottomRow = document.querySelector('.card-row.bottom');
 
             bottomRow.innerHTML = ''; // Clear previous cards
+
+            console.log("In hand cards : ", hand);
 
             for (const card of hand) {
                 const cardElement = document.createElement('div');
@@ -238,6 +277,11 @@
                 const color = (suit === '♠' || suit === '♣') ? 'black' : 'red';
                 
                 cardElement.innerHTML = `<div class="card face-up ${color}">${card}</div>`;
+
+                cardElement.addEventListener('click', function() {
+                    playCard(card);
+                });
+
                 bottomRow.appendChild(cardElement);
             }
 
@@ -256,12 +300,36 @@
                     div.appendChild(cardElement);
                 }
             });
+
+            // Center Cards
+            const center = document.querySelector('.center-cards');
+            center.innerHTML = '';
+
+            console.log("Placing cards : ", currentRound.cards);
+
+            const positionsMap = alignArrays();
+            currentRound.cards.forEach(playedCard => {
+                const [player, card] = Object.entries(playedCard)[0];
+                const pos = positionsMap[player];
+
+                const suit = card.slice(-1);
+                const color = (suit === '♠' || suit === '♣') ? 'black' : 'red';
+
+                console.log("Placing card : ", card, player, pos, color);
+
+                const cardElement = document.createElement('div');
+                cardElement.classList.add('card', pos, 'face-up', color);
+                cardElement.innerHTML = card;
+                center.appendChild(cardElement);
+            });
         }
 
 
         function updateBid(){
             const center = document.querySelector('.center-cards');
-            center.innerHTML = '';
+            if(currentTurn.action === "bid") {
+                center.innerHTML = '';
+            }
 
             if(currentTurn.action != "bid" || currentTurn.playerId != localPlayerId) {
                 return;
@@ -413,6 +481,8 @@
             if(offset === 0) {
                 console.log('Setting Player Order...');
                 setPlayerOrder();
+                // TODO : Move this to init stage, and let only the 4th player deal.
+                // DEal has to come from same deck, to maintain consistency
             } else { // Deal 2
                 dealButton.disabled = true;
             }
@@ -466,7 +536,8 @@
                 deck: deck,
                 currentTurn: currentTurn,
                 currentBid: currentBid,
-                currentTrump: currentTrump
+                currentTrump: currentTrump,
+                currentRound: currentRound
             };
 
             // Save the state as a JSON string in localStorage
@@ -554,6 +625,82 @@
             });
         }
 
+        function playCard(card) {
+            console.log(card);
+            // TODO :  validate play
+            if(currentTurn.action != "play" || currentTurn.playerId != localPlayerId) {
+                alert(`Can't play now. Current turn is : ${currentTurn.playerId} , ${currentTurn.action}`);
+                return;
+            }
+            hand = hand.filter(item => item !== card);
+            console.log("Filtered Hand : ", hand);
+            broadcastToPeers({
+                type: "play",
+                data: card
+            });
+
+            if(currentRound.cards.length === 4) {
+                // Calculate score and next player
+                result = calculateRoundResults(currentRound.cards);
+                console.log(result);
+                // Broadcast points and reset center
+                broadcastToPeers({
+                    type: "turn",
+                    data: {
+                        playerId: result.winner,
+                        action: "play"
+                    }
+                });
+            } else {
+                moveToNextTurn("play");
+            }
+        }
+
+        const cardRanking = ['7', '8', 'Q', 'K', '10', 'A', '9', 'J'];
+        const cardPoints = {
+            'J': 3,
+            '9': 2,
+            '10': 1,
+            'A': 1,
+            '7': 0,
+            '8': 0,
+            'Q': 0,
+            'K': 0
+        };
+
+        function calculateRoundResults(playerCards) {
+            console.log(playerCards);
+            const firstCard = Object.values(playerCards[0])[0];
+            const firstCardSuit = firstCard.slice(-1);
+            console.log(firstCardSuit);
+            
+            let winner = null;
+            let highestCardIndex = -1;
+            let totalPoints = 0;
+
+            // Iterate over the player's cards
+            for (const playerCard of playerCards) { 
+                const [playerId, card] = Object.entries(playerCard)[0];
+                console.log(`Player: ${playerId}, Card: ${card}`);
+                const cardRank = card.slice(0, -1);  // Extract the rank (e.g., 'J', 'A')
+                const cardSuit = card.slice(-1);     // Extract the suit (e.g., '♠', '♦')
+
+                // Add points for this card
+                totalPoints += cardPoints[cardRank];
+
+                // If the card matches the first card's suit, check if it's the highest card
+                if (cardSuit === firstCardSuit) {
+                    const cardIndex = cardRanking.indexOf(cardRank);
+                    if (cardIndex > highestCardIndex) {
+                        highestCardIndex = cardIndex;
+                        winner = playerId;
+                    }
+                }
+            }
+
+            return { winner, totalPoints };
+        }
+        
         function openTrump(trump) {
             broadcastToPeers({
                 type: "trump",
