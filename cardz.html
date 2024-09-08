@@ -785,12 +785,13 @@
             // Iterate over the player's cards
             for (const playerCard of playerCards) { 
                 const [playerId, card] = Object.entries(playerCard)[0];
-                console.log(`Player: ${playerId}, Card: ${card}`);
                 const cardRank = card.slice(0, -1);  // Extract the rank (e.g., 'J', 'A')
                 const cardSuit = card.slice(-1);     // Extract the suit (e.g., '♠', '♦')
-
+                
                 // Add points for this card
                 totalPoints += cardPoints[cardRank];
+                
+                console.log(`Player: ${playerId}, Card: ${card}, FCS : ${firstCardSuit}, TS : ${currentTrump.trump}, HC : ${highestCardIndex}, HT : ${highestTrumpCardIndex}`);
 
                 // If the card matches the first card's suit, check if it's the highest card
                 if (highestTrumpCardIndex === -1 && cardSuit === firstCardSuit) {
@@ -799,7 +800,7 @@
                         highestCardIndex = cardIndex;
                         winner = playerId;
                     }
-                } else if(currentTrump.open && cardSuit === currentTrump.suit) {
+                } else if(currentTrump.open && cardSuit === currentTrump.trump) {
                     const cardIndex = cardRanking.indexOf(cardRank);
                     if (cardIndex > highestTrumpCardIndex) {
                         highestTrumpCardIndex = cardIndex;
