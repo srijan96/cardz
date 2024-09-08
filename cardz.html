@@ -35,15 +35,36 @@
 
     <script src="https://cdn.jsdelivr.net/npm/simple-peer@9/simplepeer.min.js"></script>
     <script>
-        const signalingServerURL = 'ws://localhost:8080';  // WebSocket signaling server URL
-        // const signalingServerURL = 'ws://fc43-2405-201-800c-b165-6c25-eecc-96d8-ce1b.ngrok-free.app';  // WebSocket signaling server URL
+        const url = new URL(window.location.href);
+        const urlParams = new URLSearchParams(url.search);
+
+        console.log(urlParams);
+
+        let signalingServerURL = urlParams.get('s');
+        if(!signalingServerURL) {
+            signalingServerURL = prompt("Please enter server URL:");
+            urlParams.set("s", signalingServerURL);
+        }
+
+        let roomId = urlParams.get('r');
+        if(!roomId) {
+            roomId = prompt("Please enter Room ID:");
+            urlParams.set("r", roomId);
+        }
+
+        window.history.pushState({}, '', `${url.pathname}?${urlParams}`);
+
+        console.log(signalingServerURL, roomId);
+
+        // const signalingServerURL = 'ws://localhost:8080';  // WebSocket signaling server URL
+        // const signalingServerURL = 'ws://fc43-2405-201-800c-b165-6c25-eecc-96d8-ce1b.ngrok-free.app';
         const signalingSocket = new WebSocket(signalingServerURL);
         const PASS = 0;
 
         const startButton = document.getElementById('startButton');
         const peers = {};  // Store peer connections
         let localPlayerId = prompt("Please enter your Player ID:");
-        let roomId = prompt("Please enter Room ID:");
+
 
         let playerOrder = [];
         let hand = [];
