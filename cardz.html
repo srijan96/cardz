@@ -61,7 +61,8 @@
             round: 0,
             cards: []
         }
-        let localScore = 0;
+        let matchScores = [0,0,0,0];
+        let gameScores = [0,0,0,0];
 
         let deck = generateDeck();
 
@@ -74,7 +75,7 @@
             currentBid = savedState.currentBid
             currentTrump = savedState.currentTrump
             currentRound = savedState.currentRound
-            localScore = savedState.localScore
+            matchScores = savedState.matchScores
         }
 
         if (!localPlayerId || !roomId) {
@@ -170,7 +171,6 @@
             console.log(dataObject);
             if(dataObject.type === "playerOrder") {
                 playerOrder = dataObject.data;
-                startButton.style.display = 'none'; // Remove start button once game starts
             } else if(dataObject.type === "do-deal") {
                 dealCards();
             } else if(dataObject.type === "deal") {
@@ -198,30 +198,60 @@
                     cards: newCards
                 }
             } else if(dataObject.type === "round-end") {
-                currentRound = {
-                    round: currentRound.round + 1,
-                    cards: []
-                }
-                score = dataObject.data;
-                if(score.winner === localPlayerId) {
-                    localScore = localScore + score.totalPoints;
-                }
-                if(currentRound.round === 8) {
-                    startButton.style.display = 'inline-block';
-                    startButton.textContent = 'Start new Game';                    
-                }
+                processRoundEnd(dataObject);
+            } else if(dataObject.type === "reset") {
+                resetStates();
             }
             updateVisuals();
         }
 
+        function processRoundEnd(dataObject) {
+            currentRound = {
+                round: currentRound.round + 1,
+                cards: []
+            }
+
+            score = dataObject.data;
+            const winnerIndex = playerOrder.indexOf(score.winner);
+
+            console.log(matchScores);
+            matchScores[winnerIndex] += score.totalPoints;
+            console.log(matchScores);
+
+
+            if(currentRound.round === 8) {
+                startButton.style.display = 'inline-block';
+                startButton.textContent = 'Start new Game';    
+                
+                // Calculate match winner
+                const bidderIndex = playerOrder.indexOf(currentBid.playerId);
+                const bidderTeam = bidderIndex % 2;
+
+                const bidderTeamScore = matchScores[bidderTeam] + matchScores[bidderTeam+2]
+                const curGameScore = (bidderTeamScore >= currentBid.amount) ? 1 : -1;
+
+                console.log(bidderIndex, bidderTeam, bidderTeamScore, curGameScore);
+                
+                console.log(gameScores);
+                gameScores[bidderTeam] += curGameScore;
+                gameScores[bidderTeam + 2] += curGameScore;
+                console.log(gameScores);
+            }
+        }
+
         // Init Match
         startButton.addEventListener('click', async () => {
+            console.log("Init match");
             if(currentRound.round === 0) {
                 console.log('Fresh game, Setting Player Order...');
                 setPlayerOrder();
             }
 
-            reserStates();
+            broadcastToPeers({
+                type: "reset",
+                data: {
+                }
+            });
 
             broadcastToPeers({
                 type: "turn",
@@ -238,7 +268,7 @@
             });
         });
 
-        function reserStates() {
+        function resetStates() {
             deck = shuffleList(deck);
             hand = [];
             playerOrder = playerOrder; // Keep same
@@ -256,10 +286,13 @@
                 round: 0,
                 cards: []
             }
-            localScore = 0;
+            matchScores = [0,0,0,0];
         }
 
         function updateVisuals() {
+            if(hand.length > 0) {
+                startButton.style.display = 'none'; // Remove start button once game starts
+            }
             updatePeerList();
             updateCards();
             updateBid();
@@ -287,13 +320,15 @@
                 const listItem = document.createElement('li');
                 const localPlayerMarker = peerId === localPlayerId ? "*" : "";
                 const turnMarker = peerId === currentTurn.playerId ? currentTurn.action : "";
-                const scoreMarker = peerId === localPlayerId ? `(${localScore})` : "";
+                
+                const playerIndex = playerOrder.indexOf(peerId);
+                const scoreMarker = playerIndex === -1 ? "" : `(${matchScores[playerIndex]} / ${gameScores[playerIndex]})`;
                 
                 const bidText = currentBid.amount ? currentBid.amount : "";
                 const trumpText = currentTrump.open ? currentTrump.trump : "";
 
                 const bidMarker = currentBid.playerId === peerId ? `${bidText} ${trumpText}` : "";
-                listItem.textContent = `${peerId} ${localPlayerMarker} ${turnMarker} ${bidMarker} ${scoreMarker}`;
+                listItem.textContent = `${peerId}|${localPlayerMarker} ${turnMarker} ${bidMarker} ${scoreMarker}`;
                 playersListDiv.appendChild(listItem);
             });
 
@@ -589,7 +624,7 @@
                 currentBid: currentBid,
                 currentTrump: currentTrump,
                 currentRound: currentRound,
-                localScore: localScore
+                matchScores: matchScores
             };
 
             // Save the state as a JSON string in localStorage
