@@ -196,10 +196,27 @@
             font-size: 16px;
             color: #333;
             transition: background-color 0.3s ease;
+
         }
 
         #peerList ul li:hover {
             background-color: #e0e0e0;
+        }
+
+        /* Media query for larger screens */
+        @media (max-width: 768px) {
+            #peerList {
+                width: 80vw;
+            }
+            #peerList ul {
+                display: flex;
+                flex-wrap: wrap;
+            }
+
+            #peerList ul li {
+                flex: 1 1 18%; /* Make the list items take up 45% of the container width */
+                box-sizing: border-box;
+            }
         }
 
         /* Deal button styling */
@@ -252,29 +269,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/simple-peer@9/simplepeer.min.js"></script>
     <script>
-        const url = new URL(window.location.href);
-        const urlParams = new URLSearchParams(url.search);
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const signalingServerURL = wsProtocol + '//' + window.location.host;
 
-        console.log(urlParams);
+        let roomId = prompt("Please enter Room ID:");
 
-        let signalingServerURL = urlParams.get('s');
-        if(!signalingServerURL) {
-            signalingServerURL = prompt("Please enter server URL:");
-            urlParams.set("s", signalingServerURL);
-        }
-
-        let roomId = urlParams.get('r');
-        if(!roomId) {
-            roomId = prompt("Please enter Room ID:");
-            urlParams.set("r", roomId);
-        }
-
-        window.history.pushState({}, '', `${url.pathname}?${urlParams}`);
-
-        console.log(signalingServerURL, roomId);
-
-        // const signalingServerURL = 'ws://localhost:8080';  // WebSocket signaling server URL
-        // const signalingServerURL = 'ws://fc43-2405-201-800c-b165-6c25-eecc-96d8-ce1b.ngrok-free.app';
         const signalingSocket = new WebSocket(signalingServerURL);
         const PASS = 0;
 
