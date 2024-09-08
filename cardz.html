@@ -36,6 +36,7 @@
     <script src="https://cdn.jsdelivr.net/npm/simple-peer@9/simplepeer.min.js"></script>
     <script>
         const signalingServerURL = 'ws://localhost:8080';  // WebSocket signaling server URL
+        // const signalingServerURL = 'ws://fc43-2405-201-800c-b165-6c25-eecc-96d8-ce1b.ngrok-free.app';  // WebSocket signaling server URL
         const signalingSocket = new WebSocket(signalingServerURL);
         const PASS = 0;
 
@@ -533,6 +534,7 @@
             const offset = hand.length*4;
             // Deal 1
             if(offset === 0) {
+                deck = shuffleList(deck);
             } else { // Deal 2
                 startButton.disabled = true;
             }
@@ -689,9 +691,48 @@
             });
         }
 
+        function validatePlay(card) {
+            if(currentRound.cards.length === 0) {
+                // Any card is valid to start with
+                return true;
+            }
+            const suitsInHand = new Set(hand.map(c => c.slice(-1)));
+            const playedSuit = card.slice(-1);
+            const firstCard = Object.values(currentRound.cards[0])[0];
+            const firstCardSuit = firstCard.slice(-1);
+
+            // Same suit, allz good
+            if(playedSuit === firstCardSuit) {
+                return true;
+            }
+
+            // Diff suit but same suit is in hand, illegal play
+            if(suitsInHand.has(firstCardSuit)) {
+                alert(`Illegal play. Have to play suit ${firstCardSuit} as you have it`);
+                return false;
+            } else {
+                if(currentTrump.open === false) {
+                    const userResponse = confirm("Do you want to reveal trump?");
+                    if (userResponse) {
+                        console.log("User selected Yes (OK) to open trump");
+                        openTrump();
+                        return false;
+                    } else {
+                        console.log("User selected No (Cancel) to open trump");
+                        return true;
+                    }
+                    
+                }
+                // Any card is legal, as suit not in hand and trump is already open
+                return true;
+            }
+        }
+
         function playCard(card) {
             console.log(card);
-            // TODO :  validate play
+            if(validatePlay(card) === false) {
+                return;
+            }
             if(currentTurn.action != "play" || currentTurn.playerId != localPlayerId) {
                 alert(`Can't play now. Current turn is : ${currentTurn.playerId} , ${currentTurn.action}`);
                 return;
@@ -738,6 +779,7 @@
             
             let winner = null;
             let highestCardIndex = -1;
+            let highestTrumpCardIndex = -1;
             let totalPoints = 0;
 
             // Iterate over the player's cards
@@ -751,10 +793,16 @@
                 totalPoints += cardPoints[cardRank];
 
                 // If the card matches the first card's suit, check if it's the highest card
-                if (cardSuit === firstCardSuit) {
+                if (highestTrumpCardIndex === -1 && cardSuit === firstCardSuit) {
                     const cardIndex = cardRanking.indexOf(cardRank);
                     if (cardIndex > highestCardIndex) {
                         highestCardIndex = cardIndex;
+                        winner = playerId;
+                    }
+                } else if(currentTrump.open && cardSuit === currentTrump.suit) {
+                    const cardIndex = cardRanking.indexOf(cardRank);
+                    if (cardIndex > highestTrumpCardIndex) {
+                        highestTrumpCardIndex = cardIndex;
                         winner = playerId;
                     }
                 }
@@ -763,11 +811,12 @@
             return { winner, totalPoints };
         }
         
-        function openTrump(trump) {
+        function openTrump() {
+            console.log("Opening trump : " + currentTrump);
             broadcastToPeers({
                 type: "trump",
                 data: {
-                    trump: trump,
+                    trump: currentTrump.trump,
                     open: true
                 }
             });
