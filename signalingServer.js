@@ -11,7 +11,8 @@ const MAX_PLAYERS_PER_ROOM = 4;  // Set maximum players per room
 // Create the HTTP server
 const server = http.createServer((req, res) => {
     // Serve the HTML file when the root URL is accessed
-    if (req.url === '/') {
+    const cleanUrl = req.url.split('?')[0];
+    if (cleanUrl === '/') {
         const filePath = path.join(__dirname, 'cardz.html');
         fs.readFile(filePath, (err, content) => {
             if (err) {

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>4-Player WebRTC Card Game (with Simple-Peer and Rooms)</title>
+    <title>CardZ</title>
     <style>
         /* General Game Board Setup */
         body {
@@ -13,7 +13,7 @@
             align-items: center;
             height: 100vh;
             margin: 0;
-            background-color: #f0f0f0;
+            background: linear-gradient(90deg, #2f4f4f, #0b3d3d);
         }
 
         .game-board {
@@ -25,6 +25,8 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
 
         /* Top and Bottom Cards (horizontal rows) */
@@ -64,12 +66,60 @@
             transform: translateY(-50%);
         }
 
+        #player-top, 
+        #player-left, 
+        #player-right, 
+        #player-bottom {
+            font-family: Arial, sans-serif;
+            font-size: 1.5rem;
+            border: 2px solid black;
+            padding: 10px;
+            text-align: center;
+            width: auto;
+            height: 40px;
+            background-color: #bfd0d0;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #player-top {
+            position: absolute;
+            top: -80px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #player-bottom {
+            position: absolute;
+            bottom: -80px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #player-left {
+            position: absolute;
+            left: -130px;
+            top: 50%;
+            transform: translateY(-50%) rotate(-90deg);
+        }
+
+        #player-right {
+            position: absolute;
+            right: -130px;
+            top: 50%;
+            transform: translateY(-50%) rotate(90deg);
+        }
+
         /* Card Styles */
         .card {
             width: 50px;
             height: 80px;
             background-color: white;
             border-radius: 5px;
+            /* box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); */
             border: 1px solid #000;
             display: flex;
             justify-content: center;
@@ -152,10 +202,12 @@
 
         .red {
             color: red;
+            font-weight: bold;
         }
 
         .black {
             color: black;
+            font-weight: bold;
         }
 
         /* Style for the players list section */
@@ -164,7 +216,7 @@
             top: 10px;
             left: 10px;
             width: 150px;
-            background-color: #ffffff;
+            background-color: #bfd0d0;
             border: 2px solid #333;
             border-radius: 8px;
             padding: 10px;
@@ -242,6 +294,8 @@
 </head>
 <body>
     <div id="peerList">
+        <h2>Details</h2>
+        <ul id="deets"></ul>
         <h2>Players</h2>
         <ul id="peers"></ul>
     </div>
@@ -250,21 +304,16 @@
 
 
     <div class="game-board">
-        <!-- Top Player's Cards (Face Down) -->
         <div class="card-row top"></div>
-
-        <!-- Left Player's Cards (Face Down) -->
         <div class="card-column left"></div>
-
-        <!-- Center Cards (One from Each Player) -->
         <div class="center-cards"></div>
-
-        <!-- Right Player's Cards (Face Down) -->
         <div class="card-column right"></div>
+        <div class="card-row bottom"></div>
 
-        <!-- Bottom Player's Cards (Face Up) -->
-        <div class="card-row bottom">
-        </div>
+        <div id="player-top"></div>
+        <div id="player-bottom"></div>
+        <div id="player-left"></div>
+        <div id="player-right"></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/simple-peer@9/simplepeer.min.js"></script>
@@ -272,14 +321,30 @@
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const signalingServerURL = wsProtocol + '//' + window.location.host;
 
-        let roomId = prompt("Please enter Room ID:");
+        function getQueryParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
+
+        function updateQueryParam(key, value) {
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set(key, value);
+            const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
+            history.replaceState(null, '', newUrl);
+        }
+
+        let roomId = getQueryParam('roomId') || prompt("Please enter Room ID:");
+        let localPlayerId = getQueryParam('playerId') || prompt("Please enter your Player ID:");
+
+        // If the user provides the values via prompt, update the URL
+        if (!getQueryParam('roomId')) updateQueryParam('roomId', roomId);
+        if (!getQueryParam('playerId')) updateQueryParam('playerId', localPlayerId);
 
         const signalingSocket = new WebSocket(signalingServerURL);
         const PASS = 0;
 
         const startButton = document.getElementById('startButton');
         const peers = {};  // Store peer connections
-        let localPlayerId = prompt("Please enter your Player ID:");
 
 
         let playerOrder = [];
@@ -298,6 +363,7 @@
             round: 0,
             cards: []
         }
+        let lastRoundCards = [];
         let matchScores = [0,0,0,0];
         let gameScores = [0,0,0,0];
 
@@ -312,8 +378,13 @@
             currentBid = savedState.currentBid
             currentTrump = savedState.currentTrump
             currentRound = savedState.currentRound
+            lastRoundCards = savedState.lastRoundCards
             matchScores = savedState.matchScores
+            gameScores = savedState.gameScores
         }
+
+        const centreCardPositions = ['cleft', 'ctop', 'cright', 'cbottom'];
+        const playerPositions = ["player-top", "player-right", "player-bottom", "player-left"];
 
         if (!localPlayerId || !roomId) {
             alert("A valid Player ID and Room ID are required to join the game.");
@@ -443,6 +514,7 @@
         }
 
         function processRoundEnd(dataObject) {
+            lastRoundCards = currentRound.cards;
             currentRound = {
                 round: currentRound.round + 1,
                 cards: []
@@ -540,33 +612,50 @@
 
         // Update the peer list UI
         function updatePeerList() {
-            console.log(`Updating playerOrder with ${playerOrder}`)
+            // Update Game details
+            const gameDetailsUL = document.getElementById('deets');
+            gameDetailsUL.innerHTML = '';
+
+            const roomListItem = document.createElement('li');
+            roomListItem.textContent = `Room : ${roomId}`;
+            gameDetailsUL.appendChild(roomListItem);
+
+            const bidItem = document.createElement('li');
+            const bidText = currentBid.amount ? `${currentBid.playerId} : ${currentBid.amount}` : "";
+            const trumpText = currentTrump.open ? getCardText(currentTrump.trump) : "";
+            bidItem.innerHTML = `Bid : ${bidText} ${trumpText}`;
+            gameDetailsUL.appendChild(bidItem);
+
+            const lastRoundItem = document.createElement('li');
+            lastRoundItem.innerHTML = `Last Hand: </br>${lastRoundCards.map(card => getCardText(Object.values(card)[0])).join(', ')}`;
+            gameDetailsUL.appendChild(lastRoundItem);
+
+            // Update players
+            const playersListUL = document.getElementById('peers');
+            playersListUL.innerHTML = '';
+
             // Check if playerOrder is empty (by checking length)
             playerList = playerOrder.length === 0 
                 ? [...Object.keys(peers), localPlayerId]  // Concatenate array and localPlayerId
                 : playerOrder;
 
-            const playersListDiv = document.getElementById('peers');
-            playersListDiv.innerHTML = '';  // Clear the existing list
-
-            const roomListItem = document.createElement('li');
-            roomListItem.textContent = `Room ${roomId}`;
-            playersListDiv.appendChild(roomListItem);
-
             playerList.forEach(peerId => {
-                const listItem = document.createElement('li');
-                const localPlayerMarker = peerId === localPlayerId ? "*" : "";
-                const turnMarker = peerId === currentTurn.playerId ? currentTurn.action : "";
-                
+                const listItem = document.createElement('li');                
                 const playerIndex = playerOrder.indexOf(peerId);
                 const scoreMarker = playerIndex === -1 ? "" : `(${matchScores[playerIndex]} / ${gameScores[playerIndex]})`;
                 
-                const bidText = currentBid.amount ? currentBid.amount : "";
-                const trumpText = currentTrump.open ? currentTrump.trump : "";
+                listItem.textContent = `${peerId} ${scoreMarker}`;
+                playersListUL.appendChild(listItem);
 
-                const bidMarker = currentBid.playerId === peerId ? `${bidText} ${trumpText}` : "";
-                listItem.textContent = `${peerId}|${localPlayerMarker} ${turnMarker} ${bidMarker} ${scoreMarker}`;
-                playersListDiv.appendChild(listItem);
+                // Update player markers
+                if(playerIndex != -1) {        
+                    const positionsMap = alignArrays(playerPositions);        
+                    const divId = positionsMap[peerId]
+                    const playerDiv = document.getElementById(divId);
+                    playerDiv.innerHTML = peerId;
+                    playerDiv.className = peerId === currentTurn.playerId ? "red" : "";
+                }
+
             });
 
             // Enable the start button if there are 4 players connected
@@ -577,11 +666,17 @@
             }
         }
 
-        function alignArrays() {
-            const positions = ['cleft', 'ctop', 'cright', 'cbottom'];
+        function getCardText(card) {
+            const suit = card.slice(-1);
+            const color = (suit === '♠' || suit === '♣') ? 'black' : 'red';
 
+            return `<span class=${color}>${card}</span>`
+        }
+
+        function alignArrays(positions) {
             const playerIndex = playerOrder.indexOf(localPlayerId);
-            const cbottomIndex = positions.indexOf('cbottom');
+            const cbottomIndex = positions.findIndex(position => position.includes('bottom'));
+
 
             const rotation = (cbottomIndex - playerIndex + playerOrder.length) % playerOrder.length;
 
@@ -643,7 +738,7 @@
 
             console.log("Placing cards : ", currentRound.cards);
 
-            const positionsMap = alignArrays();
+            const positionsMap = alignArrays(centreCardPositions);
             currentRound.cards.forEach(playedCard => {
                 const [player, card] = Object.entries(playedCard)[0];
                 const pos = positionsMap[player];
@@ -861,7 +956,9 @@
                 currentBid: currentBid,
                 currentTrump: currentTrump,
                 currentRound: currentRound,
-                matchScores: matchScores
+                lastRoundCards: lastRoundCards,
+                matchScores: matchScores,
+                gameScores: gameScores
             };
 
             // Save the state as a JSON string in localStorage
