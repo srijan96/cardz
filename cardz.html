@@ -368,6 +368,7 @@
         let gameScores = [0,0,0,0];
 
         let deck = generateDeck();
+        let playedDeck = [];
 
         savedState = loadStateFromLocalStorage()
         if(savedState) {
@@ -381,6 +382,7 @@
             lastRoundCards = savedState.lastRoundCards
             matchScores = savedState.matchScores
             gameScores = savedState.gameScores
+            playedDeck = savedState.playedDeck
         }
 
         const centreCardPositions = ['cleft', 'ctop', 'cright', 'cbottom'];
@@ -505,6 +507,8 @@
                     round: currentRound.round,
                     cards: newCards
                 }
+                playedDeck = [...playedDeck, dataObject.data]
+                console.log(playedDeck);
             } else if(dataObject.type === "round-end") {
                 processRoundEnd(dataObject);
             } else if(dataObject.type === "reset") {
@@ -556,6 +560,10 @@
                 setPlayerOrder();
             }
 
+            callReset();
+        });
+
+        function callReset() {
             broadcastToPeers({
                 type: "reset",
                 data: {
@@ -575,12 +583,23 @@
                 data: {
                 }
             });
-        });
+        }
+
+        function rotateLeft(arr) {
+            if (arr.length === 0) return arr;
+            const firstElement = arr.shift();
+            arr.push(firstElement);
+            return arr;
+        }
 
         function resetStates() {
-            deck = shuffleList(deck);
+            // If last match didnt happen, shuffle(?)
+            deck = currentRound.round === 0 ? shuffleList(deck): cutAndFlip(playedDeck);
+            print(deck);
+            playedDeck = [];
             hand = [];
-            playerOrder = playerOrder; // Keep same
+            // If last match didnt happen, dont rotate
+            playerOrder = currentRound.round === 0 ? playerOrder : rotateLeft(playerOrder);
             currentTurn = {
                 playerId: null, action: null
             }
@@ -691,6 +710,27 @@
 
             return playerPositionMap;
         }
+
+        function sortCards(cards) {
+            const suitOrder = ['♦', '♣', '♥', '♠'];
+            const rankOrder = ['7', '8', 'Q', 'K', '10', 'A', '9', 'J'];
+
+            return cards.sort((cardA, cardB) => {
+                const suitA = cardA.slice(-1);
+                const suitB = cardB.slice(-1);
+
+                const rankA = cardA.slice(0, -1);
+                const rankB = cardB.slice(0, -1);
+
+                const suitComparison = suitOrder.indexOf(suitB) - suitOrder.indexOf(suitA);
+
+                if (suitComparison !== 0) {
+                    return suitComparison;
+                }
+
+                return rankOrder.indexOf(rankB) - rankOrder.indexOf(rankA);
+            });
+        }
         
         function updateCards() {
             // Self cards
@@ -700,7 +740,9 @@
 
             console.log("In hand cards : ", hand);
 
-            for (const card of hand) {
+            const sortedHand = sortCards(hand);
+
+            for (const card of sortedHand) {
                 const cardElement = document.createElement('div');
                 cardElement.classList.add('card', 'face-up');
                 
@@ -834,6 +876,16 @@
             return list;
         }
 
+        function cutAndFlip(arr) {
+            if (arr.length <= 1) return arr;
+            const cutIndex = Math.floor(Math.random() * (arr.length - 1)) + 1;
+            const firstHalf = arr.slice(0, cutIndex);
+            const secondHalf = arr.slice(cutIndex);
+            const flippedArray = [...secondHalf, ...firstHalf];
+            console.log(arr,flippedArray);
+            return flippedArray;
+        }
+
         function unicast(peerId, data) {
             peer = peers[peerId];
             // Check if the peer is connected before sending data
@@ -958,7 +1010,8 @@
                 currentRound: currentRound,
                 lastRoundCards: lastRoundCards,
                 matchScores: matchScores,
-                gameScores: gameScores
+                gameScores: gameScores,
+                playedDeck: playedDeck
             };
 
             // Save the state as a JSON string in localStorage
@@ -999,7 +1052,7 @@
                             }
                         });
                     } else {
-                        moveToNextTurn("end", 0);
+                        callReset();
                     }
                 } else {
                     broadcastToPeers({
