@@ -595,7 +595,7 @@
         function resetStates() {
             // If last match didnt happen, shuffle(?)
             deck = currentRound.round === 0 ? shuffleList(deck): cutAndFlip(playedDeck);
-            print(deck);
+            console.log(deck);
             playedDeck = [];
             hand = [];
             // If last match didnt happen, dont rotate
